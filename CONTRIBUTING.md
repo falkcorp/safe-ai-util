@@ -1,4 +1,6 @@
-# file: CONTRIBUTING.md
+<!-- file: CONTRIBUTING.md -->
+<!-- version: 1.0.0 -->
+<!-- guid: 034afae5-b5f5-4ff7-8b30-381f8b119f0f -->
 
 ## Table of Contents
 
