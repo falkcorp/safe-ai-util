@@ -1,5 +1,5 @@
 # file: .github/workflows/release-python.yml
-# version: 1.0.0
+# version: 1.0.2
 # guid: d1e2f3a4-b5c6-7d8e-9f0a-1b2c3d4e5f6a
 
 name: Python Release Build
@@ -31,16 +31,16 @@ jobs:
       matrix: ${{ fromJSON(inputs.python-matrix) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Download protobuf artifacts
         if: inputs.protobuf-artifacts == 'true'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: protobuf-generated
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -85,7 +85,7 @@ jobs:
 
       - name: Upload coverage (primary only)
         if: matrix.primary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: python-coverage-${{ matrix.os }}-${{ matrix.python-version }}
           path: coverage.xml

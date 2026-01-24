@@ -1,5 +1,5 @@
 # file: .github/workflows/release-frontend.yml
-# version: 1.0.0
+# version: 1.0.2
 # guid: f3a4b5c6-d7e8-9f0a-1b2c-3d4e5f6a7b8c
 
 name: Frontend Release Build
@@ -31,16 +31,16 @@ jobs:
       matrix: ${{ fromJSON(inputs.frontend-matrix) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Download protobuf artifacts
         if: inputs.protobuf-artifacts == 'true'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: protobuf-generated
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload build artifacts (primary only)
         if: matrix.primary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-build
           path: dist/
