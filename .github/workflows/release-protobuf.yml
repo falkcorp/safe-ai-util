@@ -1,5 +1,5 @@
 # file: .github/workflows/release-protobuf.yml
-# version: 1.0.2
+# version: 1.0.3
 # guid: d8e2f6a1-b9c7-4d8e-820f-5b7ac4d2e6f3
 name: Release Protobuf Assets
 
@@ -33,7 +33,7 @@ jobs:
     outputs:
       artifacts_available: ${{ steps.set-output.outputs.artifacts_available }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - name: Quick change detection
         id: changes
         run: |
@@ -46,11 +46,11 @@ jobs:
               echo "proto_changed=false" >> $GITHUB_OUTPUT
             fi
           fi
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
