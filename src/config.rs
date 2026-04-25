@@ -1,14 +1,20 @@
 // file: src/config.rs
-// version: 1.0.0
+// version: 1.1.0
 // guid: 6ea31d79-e2bf-4304-a841-22bf1e595512
 
 use crate::error::{AgentError, Result};
+use crate::security::allowlist::AllowlistConfig;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::{debug, info};
 
-/// Application configuration
+/// Application configuration.
+///
+/// The optional `allowlist` field, when set, REPLACES the SecurityManager's
+/// built-in command list with a richer per-command policy (regex argument
+/// patterns, forbidden flags, max-args caps, custom validators). When absent,
+/// behavior is identical to pre-1.1 — the legacy hardcoded allowed set is used.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub general: GeneralConfig,
@@ -16,6 +22,9 @@ pub struct Config {
     pub safety: SafetyConfig,
     pub git: GitConfig,
     pub execution: ExecutionConfig,
+    /// Optional rich command allowlist. When `None`, defaults are used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowlist: Option<AllowlistConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +116,7 @@ impl Default for Config {
                     max_execution_time: Some(600),
                 },
             },
+            allowlist: None,
         }
     }
 }
@@ -190,5 +200,69 @@ impl Config {
         }
 
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_omits_allowlist_field() {
+        let cfg = Config::default();
+        assert!(cfg.allowlist.is_none());
+        let serialized = toml::to_string(&cfg).expect("config serializes");
+        // skip_serializing_if + None means the field should not appear.
+        assert!(
+            !serialized.contains("[allowlist]"),
+            "serialized config unexpectedly contained allowlist section: {serialized}"
+        );
+    }
+
+    #[test]
+    fn config_roundtrips_with_allowlist_section() {
+        let toml_input = r#"
+[general]
+working_directory = "/tmp"
+timeout_seconds = 60
+max_retries = 1
+
+[logging]
+level = "warn"
+format = "Json"
+file_rotation = false
+max_log_size = "1MB"
+retention_days = 1
+
+[safety]
+dry_run = false
+confirm_destructive = false
+backup_before_delete = false
+validate_paths = false
+
+[git]
+auto_stage = false
+require_message = false
+push_hooks = false
+safe_force_push = false
+
+[execution]
+environment_isolation = false
+
+[execution.resource_limits]
+
+[allowlist]
+permissive_mode = false
+always_allowed = ["git", "make"]
+blocked = ["bash", "curl"]
+
+[allowlist.conditionally_allowed]
+"#;
+        let cfg: Config = toml::from_str(toml_input).expect("parses");
+        let policy = cfg.allowlist.expect("allowlist present");
+        assert!(policy.always_allowed.contains("git"));
+        assert!(policy.always_allowed.contains("make"));
+        assert!(policy.blocked.contains("bash"));
+        assert!(!policy.permissive_mode);
     }
 }

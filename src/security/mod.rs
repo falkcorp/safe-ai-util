@@ -1,5 +1,5 @@
 // file: src/security/mod.rs
-// version: 1.0.0
+// version: 1.1.0
 // guid: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 //! Security module for the Copilot Agent Utility
@@ -13,24 +13,55 @@ pub mod validator;
 pub mod audit;
 
 use crate::error::{AgentError, Result};
+use allowlist::AllowlistConfig;
 use std::collections::HashSet;
 use tracing::{info, warn};
 
-/// Security configuration and enforcement
+/// Security configuration and enforcement.
+///
+/// Two modes:
+///   - **Legacy** (`policy = None`): use the hardcoded `default_allowed_commands`
+///     set. This preserves pre-1.1 behavior for callers that haven't supplied
+///     a config-file allowlist.
+///   - **Policy-driven** (`policy = Some(_)`): defer fully to `AllowlistConfig`,
+///     which provides per-command restrictions (forbidden args, regex patterns,
+///     max-args caps, custom validators). The hashset is still populated for
+///     `is_command_allowed` cheap-path lookups, but argument validation goes
+///     through the richer `policy.validate_command()` path.
 #[derive(Debug, Clone)]
 pub struct SecurityManager {
     allowed_commands: HashSet<String>,
     audit_enabled: bool,
     strict_mode: bool,
+    policy: Option<AllowlistConfig>,
 }
 
 impl SecurityManager {
-    /// Create a new security manager with default safe configuration
+    /// Create a new security manager with the default hardcoded allowlist.
     pub fn new() -> Self {
         Self {
             allowed_commands: Self::default_allowed_commands(),
             audit_enabled: true,
             strict_mode: true,
+            policy: None,
+        }
+    }
+
+    /// Create a security manager driven by a rich `AllowlistConfig`.
+    ///
+    /// The hashset of allowed commands is rebuilt from the policy's
+    /// `always_allowed` ∪ `conditionally_allowed.keys()` so the cheap-path
+    /// check stays consistent with the rich validator.
+    pub fn with_policy(policy: AllowlistConfig) -> Self {
+        let mut allowed: HashSet<String> = policy.always_allowed.iter().cloned().collect();
+        for key in policy.conditionally_allowed.keys() {
+            allowed.insert(key.clone());
+        }
+        Self {
+            allowed_commands: allowed,
+            audit_enabled: true,
+            strict_mode: true,
+            policy: Some(policy),
         }
     }
 
@@ -111,7 +142,11 @@ impl SecurityManager {
         result
     }
 
-    /// Validate and sanitize command arguments
+    /// Validate and sanitize command arguments.
+    ///
+    /// When a rich `policy` is attached, the per-command restrictions from
+    /// `AllowlistConfig::validate_command` (forbidden flags, regex patterns,
+    /// max-args caps) are applied in addition to the legacy sanitizer/validator.
     pub fn validate_arguments(&self, command: &str, args: &[String]) -> Result<Vec<String>> {
         if !self.is_command_allowed(command) {
             return Err(AgentError::security(
@@ -121,6 +156,10 @@ impl SecurityManager {
 
         let sanitized_args = sanitizer::sanitize_arguments(command, args)?;
         validator::validate_command_arguments(command, &sanitized_args)?;
+
+        if let Some(policy) = &self.policy {
+            policy.validate_command(command, &sanitized_args)?;
+        }
 
         if self.audit_enabled {
             audit::log_command_execution(command, &sanitized_args);
@@ -228,5 +267,61 @@ mod tests {
         security.set_strict_mode(false);
         assert!(security.add_allowed_command("dangerous_command".to_string()).is_ok());
         assert!(security.is_command_allowed("dangerous_command"));
+    }
+
+    #[test]
+    fn with_policy_uses_policy_allowlist() {
+        // Build a tight policy that only allows `git` and disallows everything else.
+        let mut policy = AllowlistConfig::secure_default();
+        policy.always_allowed.clear();
+        policy.always_allowed.insert("git".to_string());
+        policy.conditionally_allowed.clear();
+
+        let security = SecurityManager::with_policy(policy);
+        assert!(security.is_command_allowed("git"));
+        // Commands that the legacy hardcoded list allows must NOT leak through
+        // when a policy is set.
+        assert!(!security.is_command_allowed("cargo"));
+        assert!(!security.is_command_allowed("npm"));
+    }
+
+    #[test]
+    fn with_policy_enforces_forbidden_args() {
+        // Build a policy that bans `make clean` — a restriction the legacy
+        // validator/sanitizer has no awareness of, so this test exercises the
+        // policy layer specifically.
+        use crate::security::allowlist::CommandRestrictions;
+        let mut policy = AllowlistConfig::secure_default();
+        policy.always_allowed.remove("make");
+        policy.conditionally_allowed.insert(
+            "make".to_string(),
+            CommandRestrictions {
+                max_args: Some(10),
+                required_args: vec![],
+                forbidden_args: vec!["clean".to_string()],
+                allowed_patterns: vec![],
+                forbidden_patterns: vec![],
+                requires_elevation: false,
+                custom_validator: None,
+            },
+        );
+
+        let security = SecurityManager::with_policy(policy);
+
+        // `make build` should pass.
+        assert!(security
+            .validate_arguments("make", &vec!["build".to_string()])
+            .is_ok());
+
+        // `make clean` must be rejected by the rich policy.
+        let err = security
+            .validate_arguments("make", &vec!["clean".to_string()])
+            .unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("forbidden") || msg.contains("clean"),
+            "expected forbidden-arg rejection for 'make clean', got: {}",
+            err
+        );
     }
 }
