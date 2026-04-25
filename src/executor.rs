@@ -1,5 +1,5 @@
 // file: src/executor.rs
-// version: 2.0.0
+// version: 2.1.0
 // guid: bb371682-35cb-4f34-b318-8bf69ec125bd
 
 use crate::config::Config;
@@ -16,17 +16,27 @@ pub struct Executor {
 }
 
 impl Executor {
-    /// Create a new executor with the given configuration
+    /// Create a new executor with the given configuration.
+    ///
+    /// When `config.allowlist` is set, the SecurityManager is built from that
+    /// rich policy (per-command argument restrictions, regex patterns, max-args
+    /// caps). Otherwise the legacy hardcoded allowlist is used.
     pub async fn new(config: Config) -> Result<Self> {
-        // Initialize security audit system
         audit::initialize_audit_system()
             .map_err(|e| AgentError::system(format!("Failed to initialize audit system: {}", e)))?;
 
-        let security = SecurityManager::new();
+        let security = match &config.allowlist {
+            Some(policy) => {
+                info!("Executor initialized with config-supplied allowlist policy");
+                SecurityManager::with_policy(policy.clone())
+            }
+            None => {
+                info!("Executor initialized with default (hardcoded) allowlist");
+                SecurityManager::new()
+            }
+        };
 
-        // Log the security configuration
-        info!("Executor initialized with security controls enabled");
-        info!("Security stats: {:?}", security.get_allowed_commands().len());
+        info!("Security stats: {} commands allowed", security.get_allowed_commands().len());
 
         Ok(Self { config, security })
     }
