@@ -33,14 +33,23 @@ async fn main() -> Result<()> {
     // Initialize logging first
     setup_logging()?;
 
-    // Load configuration
-    let config = Config::load().await?;
-
     info!("Starting Safe AI Utility");
 
-    // Build CLI
+    // Parse CLI before loading config so --config and --policy-overlay can
+    // influence which files are read.
     let app = build_cli();
     let matches = app.get_matches();
+
+    let explicit_config = matches.get_one::<String>("config").map(std::path::PathBuf::from);
+    let overlay_path = matches
+        .get_one::<String>("policy-overlay")
+        .map(std::path::PathBuf::from);
+
+    let config = Config::load_with_paths(
+        explicit_config.as_deref(),
+        overlay_path.as_deref(),
+    )
+    .await?;
 
     // Create executor with config
     let executor = Executor::new(config).await?;
@@ -106,6 +115,12 @@ fn build_cli() -> Command {
                 .short('c')
                 .value_name("FILE")
                 .help("Specify custom configuration file")
+        )
+        .arg(
+            Arg::new("policy-overlay")
+                .long("policy-overlay")
+                .value_name("FILE")
+                .help("Apply a narrowing policy overlay (overlay must only tighten the allowlist; widening is rejected)")
         )
         .arg(
             Arg::new("args-file")
