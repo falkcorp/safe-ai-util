@@ -193,18 +193,34 @@ fn write_audit_entry_impl(entry: &AuditEntry) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Get the audit log directory
+/// Get the audit log directory.
+///
+/// Checked in order:
+///   1. `SAFE_AI_UTIL_AUDIT_PATH` (preferred, project-namespaced)
+///   2. `COPILOT_AUDIT_DIR` (legacy, kept for backwards compatibility)
+///   3. `<SAFE_AI_UTIL_LOG_DIR or ./logs>/security`
 fn get_audit_log_directory() -> PathBuf {
-    // Try to use a dedicated audit log directory
+    if let Ok(audit_dir) = std::env::var("SAFE_AI_UTIL_AUDIT_PATH") {
+        if !audit_dir.is_empty() {
+            return PathBuf::from(audit_dir);
+        }
+    }
     if let Ok(audit_dir) = std::env::var("COPILOT_AUDIT_DIR") {
-        return PathBuf::from(audit_dir);
+        if !audit_dir.is_empty() {
+            return PathBuf::from(audit_dir);
+        }
     }
 
-    // Fall back to logs directory in current working directory
-    let mut log_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    log_dir.push("logs");
-    log_dir.push("security");
-    log_dir
+    let base = std::env::var("SAFE_AI_UTIL_LOG_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let mut p = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            p.push("logs");
+            p
+        });
+    base.join("security")
 }
 
 /// Rotate audit logs if they get too large
