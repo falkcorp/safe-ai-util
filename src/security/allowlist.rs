@@ -400,6 +400,169 @@ pub struct AllowlistStats {
     pub permissive_mode: bool,
 }
 
+/// A narrowing overlay applied on top of an existing `AllowlistConfig`.
+///
+/// Every field is optional. When a field is present, its contents must
+/// represent a *strictly equal or tighter* policy than the base — the
+/// `apply_overlay` function rejects anything that would widen access.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AllowlistOverlay {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always_allowed: Option<HashSet<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conditionally_allowed: Option<HashMap<String, CommandRestrictions>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<HashSet<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permissive_mode: Option<bool>,
+}
+
+impl AllowlistConfig {
+    /// Apply a narrowing overlay, returning the merged config or an error if
+    /// the overlay would widen access.
+    pub fn apply_overlay(&self, overlay: &AllowlistOverlay) -> Result<AllowlistConfig> {
+        let mut merged = self.clone();
+
+        // 1. permissive_mode — overlay can flip it OFF, but never ON if base is OFF.
+        if let Some(p) = overlay.permissive_mode {
+            if p && !self.permissive_mode {
+                return Err(AgentError::security(
+                    "policy overlay attempted to enable permissive_mode (would widen access)",
+                ));
+            }
+            merged.permissive_mode = p;
+        }
+
+        // 2. always_allowed — every overlay entry must already be reachable in
+        //    the base. Result narrows by enumeration.
+        if let Some(overlay_allowed) = &overlay.always_allowed {
+            let base_reachable: HashSet<String> = self
+                .always_allowed
+                .iter()
+                .cloned()
+                .chain(self.conditionally_allowed.keys().cloned())
+                .collect();
+            for cmd in overlay_allowed {
+                if !base_reachable.contains(cmd) {
+                    return Err(AgentError::security(format!(
+                        "policy overlay tried to add '{}' to always_allowed (not reachable in base)",
+                        cmd
+                    )));
+                }
+            }
+            merged.always_allowed = overlay_allowed.clone();
+            for cmd in overlay_allowed {
+                merged.conditionally_allowed.remove(cmd);
+            }
+        }
+
+        // 3. blocked — union (overlay can only add bans).
+        if let Some(overlay_blocked) = &overlay.blocked {
+            for cmd in overlay_blocked {
+                merged.blocked.insert(cmd.clone());
+                merged.always_allowed.remove(cmd);
+                merged.conditionally_allowed.remove(cmd);
+            }
+        }
+
+        // 4. conditionally_allowed — only existing keys, with tightened restrictions.
+        if let Some(overlay_cond) = &overlay.conditionally_allowed {
+            for (cmd, overlay_restr) in overlay_cond {
+                let base_reachable = self.always_allowed.contains(cmd)
+                    || self.conditionally_allowed.contains_key(cmd);
+                if !base_reachable {
+                    return Err(AgentError::security(format!(
+                        "policy overlay tried to introduce conditional rules for '{}' (not reachable in base)",
+                        cmd
+                    )));
+                }
+
+                let base_restr = self
+                    .conditionally_allowed
+                    .get(cmd)
+                    .cloned()
+                    .unwrap_or_else(|| CommandRestrictions {
+                        max_args: None,
+                        required_args: vec![],
+                        forbidden_args: vec![],
+                        allowed_patterns: vec![],
+                        forbidden_patterns: vec![],
+                        requires_elevation: false,
+                        custom_validator: None,
+                    });
+
+                let tightened = tighten_restrictions(&base_restr, overlay_restr);
+                merged.conditionally_allowed.insert(cmd.clone(), tightened);
+                merged.always_allowed.remove(cmd);
+            }
+        }
+
+        Ok(merged)
+    }
+}
+
+/// Combine two `CommandRestrictions` such that the result is no looser than
+/// either operand. Forbidden lists are unioned; required lists are unioned;
+/// max_args is the minimum of the two; allowed_patterns is intersected only
+/// when both sides populate it (otherwise the populated side wins, avoiding
+/// the "empty allowed_patterns means anything goes" footgun).
+fn tighten_restrictions(
+    base: &CommandRestrictions,
+    overlay: &CommandRestrictions,
+) -> CommandRestrictions {
+    let mut required = base.required_args.clone();
+    for r in &overlay.required_args {
+        if !required.contains(r) {
+            required.push(r.clone());
+        }
+    }
+
+    let mut forbidden = base.forbidden_args.clone();
+    for f in &overlay.forbidden_args {
+        if !forbidden.contains(f) {
+            forbidden.push(f.clone());
+        }
+    }
+
+    let mut forbidden_pat = base.forbidden_patterns.clone();
+    for f in &overlay.forbidden_patterns {
+        if !forbidden_pat.contains(f) {
+            forbidden_pat.push(f.clone());
+        }
+    }
+
+    let allowed_pat = match (base.allowed_patterns.is_empty(), overlay.allowed_patterns.is_empty()) {
+        (true, _) => overlay.allowed_patterns.clone(),
+        (_, true) => base.allowed_patterns.clone(),
+        (false, false) => base
+            .allowed_patterns
+            .iter()
+            .filter(|p| overlay.allowed_patterns.contains(p))
+            .cloned()
+            .collect(),
+    };
+
+    let max_args = match (base.max_args, overlay.max_args) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    };
+
+    CommandRestrictions {
+        max_args,
+        required_args: required,
+        forbidden_args: forbidden,
+        allowed_patterns: allowed_pat,
+        forbidden_patterns: forbidden_pat,
+        requires_elevation: base.requires_elevation || overlay.requires_elevation,
+        custom_validator: overlay
+            .custom_validator
+            .clone()
+            .or_else(|| base.custom_validator.clone()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +606,166 @@ mod tests {
 
         // Should still block explicitly blocked commands
         assert!(!config.is_command_allowed("bash"));
+    }
+
+    // ---------------- Overlay narrow-only enforcement ----------------
+
+    fn make_base() -> AllowlistConfig {
+        let mut cfg = AllowlistConfig {
+            always_allowed: HashSet::new(),
+            conditionally_allowed: HashMap::new(),
+            blocked: HashSet::new(),
+            permissive_mode: false,
+        };
+        cfg.always_allowed.insert("git".to_string());
+        cfg.always_allowed.insert("make".to_string());
+        cfg.blocked.insert("bash".to_string());
+        cfg.conditionally_allowed.insert(
+            "docker".to_string(),
+            CommandRestrictions {
+                max_args: Some(20),
+                required_args: vec![],
+                forbidden_args: vec!["--privileged".to_string()],
+                allowed_patterns: vec![],
+                forbidden_patterns: vec![],
+                requires_elevation: false,
+                custom_validator: None,
+            },
+        );
+        cfg
+    }
+
+    #[test]
+    fn overlay_can_narrow_always_allowed() {
+        let base = make_base();
+        let mut overlay_set = HashSet::new();
+        overlay_set.insert("git".to_string()); // drops `make`
+        let overlay = AllowlistOverlay {
+            always_allowed: Some(overlay_set),
+            ..AllowlistOverlay::default()
+        };
+        let merged = base.apply_overlay(&overlay).expect("narrowing should succeed");
+        assert!(merged.always_allowed.contains("git"));
+        assert!(!merged.always_allowed.contains("make"));
+    }
+
+    #[test]
+    fn overlay_rejects_widening_always_allowed() {
+        let base = make_base();
+        let mut overlay_set = HashSet::new();
+        overlay_set.insert("curl".to_string()); // not in base
+        let overlay = AllowlistOverlay {
+            always_allowed: Some(overlay_set),
+            ..AllowlistOverlay::default()
+        };
+        let err = base.apply_overlay(&overlay).unwrap_err();
+        assert!(
+            err.to_string().contains("not reachable in base"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn overlay_can_add_to_blocked() {
+        let base = make_base();
+        let mut bset = HashSet::new();
+        bset.insert("zsh".to_string());
+        let overlay = AllowlistOverlay {
+            blocked: Some(bset),
+            ..AllowlistOverlay::default()
+        };
+        let merged = base.apply_overlay(&overlay).unwrap();
+        assert!(merged.blocked.contains("bash"));
+        assert!(merged.blocked.contains("zsh"));
+    }
+
+    #[test]
+    fn overlay_blocked_overrides_allowed() {
+        let base = make_base();
+        let mut bset = HashSet::new();
+        bset.insert("git".to_string()); // ban a previously-allowed command
+        let overlay = AllowlistOverlay {
+            blocked: Some(bset),
+            ..AllowlistOverlay::default()
+        };
+        let merged = base.apply_overlay(&overlay).unwrap();
+        assert!(merged.blocked.contains("git"));
+        assert!(!merged.always_allowed.contains("git"));
+        assert!(!merged.is_command_allowed("git"));
+    }
+
+    #[test]
+    fn overlay_can_tighten_conditional_restrictions() {
+        let base = make_base();
+        let mut cond = HashMap::new();
+        cond.insert(
+            "docker".to_string(),
+            CommandRestrictions {
+                max_args: Some(5), // tighter than base's 20
+                required_args: vec![],
+                forbidden_args: vec!["--rm".to_string()], // adds new ban
+                allowed_patterns: vec![],
+                forbidden_patterns: vec![],
+                requires_elevation: false,
+                custom_validator: None,
+            },
+        );
+        let overlay = AllowlistOverlay {
+            conditionally_allowed: Some(cond),
+            ..AllowlistOverlay::default()
+        };
+        let merged = base.apply_overlay(&overlay).unwrap();
+        let r = merged.conditionally_allowed.get("docker").unwrap();
+        assert_eq!(r.max_args, Some(5));
+        assert!(r.forbidden_args.contains(&"--privileged".to_string())); // base preserved
+        assert!(r.forbidden_args.contains(&"--rm".to_string())); // overlay added
+    }
+
+    #[test]
+    fn overlay_rejects_introducing_unknown_conditional() {
+        let base = make_base();
+        let mut cond = HashMap::new();
+        cond.insert(
+            "wget".to_string(),
+            CommandRestrictions {
+                max_args: Some(1),
+                required_args: vec![],
+                forbidden_args: vec![],
+                allowed_patterns: vec![],
+                forbidden_patterns: vec![],
+                requires_elevation: false,
+                custom_validator: None,
+            },
+        );
+        let overlay = AllowlistOverlay {
+            conditionally_allowed: Some(cond),
+            ..AllowlistOverlay::default()
+        };
+        let err = base.apply_overlay(&overlay).unwrap_err();
+        assert!(err.to_string().contains("not reachable in base"));
+    }
+
+    #[test]
+    fn overlay_rejects_enabling_permissive_mode() {
+        let base = make_base();
+        let overlay = AllowlistOverlay {
+            permissive_mode: Some(true),
+            ..AllowlistOverlay::default()
+        };
+        let err = base.apply_overlay(&overlay).unwrap_err();
+        assert!(err.to_string().contains("permissive_mode"));
+    }
+
+    #[test]
+    fn overlay_can_disable_permissive_mode() {
+        let mut base = make_base();
+        base.permissive_mode = true;
+        let overlay = AllowlistOverlay {
+            permissive_mode: Some(false),
+            ..AllowlistOverlay::default()
+        };
+        let merged = base.apply_overlay(&overlay).unwrap();
+        assert!(!merged.permissive_mode);
     }
 
     #[test]

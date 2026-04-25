@@ -3,7 +3,7 @@
 // guid: 6ea31d79-e2bf-4304-a841-22bf1e595512
 
 use crate::error::{AgentError, Result};
-use crate::security::allowlist::AllowlistConfig;
+use crate::security::allowlist::{AllowlistConfig, AllowlistOverlay};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -122,34 +122,78 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Load configuration from multiple sources
+    /// Load configuration from default discovery paths (user dir, project file).
     pub async fn load() -> Result<Self> {
+        Self::load_with_paths(None, None).await
+    }
+
+    /// Load configuration with optional explicit `--config` and
+    /// `--policy-overlay` paths. The overlay, when supplied, is applied to the
+    /// config's allowlist (or to the default allowlist if the config has none),
+    /// and the merged result must be strictly narrower than the base.
+    pub async fn load_with_paths(
+        explicit_config: Option<&Path>,
+        overlay_path: Option<&Path>,
+    ) -> Result<Self> {
         let mut config = Self::default();
 
-        // Try to load from user config directory
-        if let Some(user_config) = Self::user_config_path() {
-            if user_config.exists() {
-                info!("Loading user configuration from: {}", user_config.display());
-                config = Self::load_from_file(&user_config).await?;
+        // Discovery: --config wins over user config wins over project config.
+        if let Some(path) = explicit_config {
+            info!("Loading explicit configuration from: {}", path.display());
+            config = Self::load_from_file(path).await?;
+        } else {
+            if let Some(user_config) = Self::user_config_path() {
+                if user_config.exists() {
+                    info!("Loading user configuration from: {}", user_config.display());
+                    config = Self::load_from_file(&user_config).await?;
+                }
+            }
+
+            let project_config = Path::new(".safe-ai-util.toml");
+            if project_config.exists() {
+                info!(
+                    "Loading project configuration from: {}",
+                    project_config.display()
+                );
+                let project_config = Self::load_from_file(project_config).await?;
+                config = Self::merge_configs(config, project_config);
             }
         }
 
-        // Try to load from project config
-        let project_config = Path::new(".safe-ai-util.toml");
-        if project_config.exists() {
-            info!(
-                "Loading project configuration from: {}",
-                project_config.display()
-            );
-            let project_config = Self::load_from_file(project_config).await?;
-            config = Self::merge_configs(config, project_config);
-        }
-
-        // Override with environment variables
         config = Self::apply_env_overrides(config)?;
+
+        // Apply policy overlay last — must narrow whatever allowlist we have.
+        if let Some(overlay_path) = overlay_path {
+            info!("Applying policy overlay from: {}", overlay_path.display());
+            let overlay = Self::load_overlay_from_file(overlay_path).await?;
+            let base = config
+                .allowlist
+                .clone()
+                .unwrap_or_else(AllowlistConfig::secure_default);
+            let merged = base.apply_overlay(&overlay)?;
+            config.allowlist = Some(merged);
+        }
 
         debug!("Final configuration: {:#?}", config);
         Ok(config)
+    }
+
+    /// Load an overlay TOML file.
+    async fn load_overlay_from_file(path: &Path) -> Result<AllowlistOverlay> {
+        let content = fs::read_to_string(path).await.map_err(|e| {
+            AgentError::config(format!(
+                "Failed to read policy overlay {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+        toml::from_str(&content).map_err(|e| {
+            AgentError::config(format!(
+                "Failed to parse policy overlay {}: {}",
+                path.display(),
+                e
+            ))
+        })
     }
 
     /// Get the user configuration file path
