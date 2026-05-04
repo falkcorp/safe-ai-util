@@ -686,7 +686,6 @@ go.work.sum
 # Task logs
 logs/
 
-
 # >>> jdfalk managed ignore block (sync-gitignore.py) >>>
 # AI agent scratch / state (may contain PII, machine paths, secrets)
 .claude/notes/
