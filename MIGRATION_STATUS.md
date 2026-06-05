@@ -21,7 +21,7 @@ This document tracks the three-objective migration:
 ### Repository Creation
 
 * [x] **Create repo via gh CLI**
-  * Command: `gh repo create jdfalk/safe-ai-util-mcp --public --description "MCP server for safe-ai-util - exposes AI-safe command execution tools via ModelContext Protocol"`
+  * Command: `gh repo create falkcorp/safe-ai-util-mcp --public --description "MCP server for safe-ai-util - exposes AI-safe command execution tools via ModelContext Protocol"`
   * Status: Not started
   * Blocker: None
 
@@ -51,7 +51,7 @@ This document tracks the three-objective migration:
 ### Initial Repository Setup
 
 * [x] **Clone locally**
-  * Location: `/Users/jdfalk/repos/github.com/jdfalk/safe-ai-util-mcp`
+  * Location: `/Users/jdfalk/repos/github.com/falkcorp/safe-ai-util-mcp`
   * Status: Not started
 
 * [x] **Initial commit**
@@ -66,7 +66,7 @@ This document tracks the three-objective migration:
 
 * [ ] **Rename via gh CLI or web**
   * Old: `jdfalk/copilot-agent-util-rust`
-  * New: `jdfalk/safe-ai-util`
+  * New: `falkcorp/safe-ai-util`
   * Method: `gh repo rename safe-ai-util` (from repo directory)
   * Status: Not started
   * Note: GitHub auto-redirects old URLs
