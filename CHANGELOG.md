@@ -29,7 +29,7 @@
   * Stdio transport for compatibility with Claude Desktop, Continue.dev, and GitHub Copilot
   * Tool wrappers for git, buf, and python commands
   * Comprehensive security enforcement and timeout handling
-  * Repository: <https://github.com/jdfalk/safe-ai-util-mcp>
+  * Repository: <https://github.com/falkcorp/safe-ai-util-mcp>
 
 ### Documentation
 
