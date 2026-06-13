@@ -1,11 +1,22 @@
 <!-- file: CLAUDE.md -->
-<!-- version: 2.2.0 -->
+<!-- version: 2.3.0 -->
 <!-- guid: 3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f -->
+<!-- last-edited: 2026-06-13 -->
 
 # CLAUDE.md
 
-> **NOTE:** This file is a pointer. All Claude/AI agent and workflow instructions are now
-> centralized in the `.github/instructions/` and `.github/prompts/` directories.
+Safe centralized utility for AI agent command execution with comprehensive logging. Language: Rust/Python.
+
+## Coding Standards
+
+Org-wide coding standards are in the `.standards/` git submodule (cloned from `https://github.com/falkcorp/.github`).
+Always clone with `git clone --recurse-submodules` so these are available.
+
+Key files:
+- **File headers (MANDATORY):** `.standards/instructions/file-headers.md`
+- **Commit format:** `.standards/instructions/commit-messages.md`
+
+> **NOTE:** This file is the authoritative project instructions. See `.github/instructions/` and `.github/prompts/` for additional language-specific rules.
 
 ## 🚨 CRITICAL: Documentation Update Protocol
 
