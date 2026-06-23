@@ -1,5 +1,5 @@
 // file: src/commands/awk.rs
-// version: 1.0.0
+// version: 1.0.1
 // guid: 9b2c3d4e-5f6a-7b8c-9d0e-1f2a3b4c5d6e
 
 use crate::executor::Executor;
@@ -53,8 +53,7 @@ pub async fn execute(matches: &ArgMatches, _executor: &Executor) -> Result<()> {
         .map(|vals| vals.cloned().collect())
         .unwrap_or_default();
 
-    let field_separator = matches.get_one::<String>("field-separator")
-        .map(|s| s.clone())
+    let field_separator = matches.get_one::<String>("field-separator").cloned()
         .unwrap_or_else(|| " ".to_string());
 
     let assignments = matches.get_many::<String>("assign")
@@ -351,14 +350,14 @@ fn parse_action(action_text: &str) -> Result<AwkAction> {
             return Ok(AwkAction::Print(None));
         }
 
-        if inner.starts_with("print ") {
-            let expr = inner[6..].trim().to_string();
+        if let Some(stripped) = inner.strip_prefix("print ") {
+            let expr = stripped.trim().to_string();
             return Ok(AwkAction::Print(Some(expr)));
         }
 
-        if inner.starts_with("printf ") {
+        if let Some(stripped) = inner.strip_prefix("printf ") {
             // Simple printf parsing
-            let args = inner[7..].trim();
+            let args = stripped.trim();
             return Ok(AwkAction::PrintF(args.to_string(), Vec::new()));
         }
 
@@ -459,8 +458,7 @@ fn evaluate_expression(expr: &str, context: &AwkContext, line: &str) -> Result<b
     }
 
     // Handle simple field references
-    if expr.starts_with('$') {
-        let field_num_str = &expr[1..];
+    if let Some(field_num_str) = expr.strip_prefix('$') {
         if let Ok(field_num) = field_num_str.parse::<usize>() {
             let field_value = context.get_field(field_num);
             return Ok(!field_value.is_empty());
@@ -475,8 +473,7 @@ fn evaluate_expression(expr: &str, context: &AwkContext, line: &str) -> Result<b
 fn evaluate_field_or_variable(expr: &str, context: &AwkContext) -> Result<String> {
     let expr = expr.trim();
 
-    if expr.starts_with('$') {
-        let field_ref = &expr[1..];
+    if let Some(field_ref) = expr.strip_prefix('$') {
         if let Ok(field_num) = field_ref.parse::<usize>() {
             Ok(context.get_field(field_num))
         } else {

@@ -1,5 +1,5 @@
 // file: src/commands/prettier.rs
-// version: 1.0.0
+// version: 1.0.1
 // guid: f3b23e72-ff46-4cdd-bba2-9f14cede3837
 
 use crate::executor::Executor;
@@ -493,7 +493,7 @@ async fn execute_yaml_format(matches: &ArgMatches, executor: &Executor) -> Resul
     let indent = matches.get_one::<String>("indent").unwrap();
 
     // Using yq for YAML formatting
-    let args = vec!["yq", "eval", ".", "--indent", indent, path];
+    let args = ["yq", "eval", ".", "--indent", indent, path];
 
     info!("Running YAML format on: {}", path);
     match args.first() {
@@ -510,7 +510,7 @@ async fn execute_json_format(matches: &ArgMatches, executor: &Executor) -> Resul
     let indent = matches.get_one::<String>("indent").unwrap();
 
     // Using jq for JSON formatting
-    let args = vec!["jq", "--indent", indent, ".", path];
+    let args = ["jq", "--indent", indent, ".", path];
 
     info!("Running JSON format on: {}", path);
     match args.first() {
