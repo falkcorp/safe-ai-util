@@ -1,5 +1,5 @@
 // file: src/commands/buf.rs
-// version: 1.1.0
+// version: 1.1.1
 // guid: 7e8f9a0b-1c2d-3e4f-5a6b-7c8d9e0f1a2b
 
 use crate::executor::Executor;
@@ -194,12 +194,10 @@ async fn execute_format(matches: &ArgMatches, executor: &Executor) -> Result<()>
 
 async fn execute_breaking(matches: &ArgMatches, executor: &Executor) -> Result<()> {
     let against = matches.get_one::<String>("against").unwrap();
-    let args = vec![
-        "buf".to_string(),
+    let args = ["buf".to_string(),
         "breaking".to_string(),
         "--against".to_string(),
-        against.clone(),
-    ];
+        against.clone()];
 
     info!("Checking for breaking changes against: {}", against);
     executor.execute_secure("buf", &args[1..]).await
@@ -207,7 +205,7 @@ async fn execute_breaking(matches: &ArgMatches, executor: &Executor) -> Result<(
 
 async fn execute_build(matches: &ArgMatches, executor: &Executor) -> Result<()> {
     let path = matches.get_one::<String>("path").unwrap();
-    let args = vec!["buf".to_string(), "build".to_string(), path.clone()];
+    let args = ["buf".to_string(), "build".to_string(), path.clone()];
 
     info!("Building protocol buffers at path: {}", path);
     executor.execute_secure("buf", &args[1..]).await

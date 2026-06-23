@@ -1,5 +1,5 @@
 // file: src/commands/sed.rs
-// version: 1.0.0
+// version: 1.0.1
 // guid: 8a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 
 use crate::executor::Executor;
@@ -357,7 +357,7 @@ fn process_input_to_writer<W: Write>(
                             if count == n {
                                 replacement.clone()
                             } else {
-                                return format!("{}", &line_str); // This is wrong, need to fix
+                                line_str.to_string()// This is wrong, need to fix
                             }
                         }).to_string();
                     } else {

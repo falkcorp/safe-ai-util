@@ -1,5 +1,5 @@
 // file: src/security/validator.rs
-// version: 1.0.0
+// version: 1.0.1
 // guid: c3d4e5f6-a7b8-9012-cdef-345678901234
 
 //! Command validation module
@@ -307,13 +307,12 @@ fn validate_docker_run_args(args: &[String]) -> Result<()> {
         if arg.starts_with("--user") && arg.contains("root") {
             warn!("Docker run as root user detected");
         }
-        if arg.starts_with("--volume") || arg.starts_with("-v") {
-            if arg.contains(":/") {
+        if (arg.starts_with("--volume") || arg.starts_with("-v"))
+            && arg.contains(":/") {
                 return Err(AgentError::security(
                     "Docker volume mount to root filesystem is not allowed"
                 ));
             }
-        }
     }
     Ok(())
 }

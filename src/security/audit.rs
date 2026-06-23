@@ -1,5 +1,5 @@
 // file: src/security/audit.rs
-// version: 1.0.0
+// version: 1.0.1
 // guid: d4e5f6a7-b8c9-0123-def4-456789012345
 
 //! Security audit logging module
@@ -269,11 +269,10 @@ pub fn cleanup_old_audit_logs() -> std::io::Result<()> {
                     if let Ok(metadata) = std::fs::metadata(&path) {
                         if let Ok(modified) = metadata.modified() {
                             let modified_datetime: DateTime<Utc> = modified.into();
-                            if modified_datetime < cutoff {
-                                if std::fs::remove_file(&path).is_ok() {
+                            if modified_datetime < cutoff
+                                && std::fs::remove_file(&path).is_ok() {
                                     removed_count += 1;
                                 }
-                            }
                         }
                     }
                 }
