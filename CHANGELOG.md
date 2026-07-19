@@ -1,5 +1,9 @@
 # Changelog
 
+<!-- scriv-insert-here -->
+
+<!-- scriv-end-here: releases below predate the changelog.d fragment system. -->
+
 ## [Unreleased] - 2025-10-30
 
 ### 🚀 Major Changes - Repository Rename & MCP Server
