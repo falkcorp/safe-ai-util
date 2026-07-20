@@ -29,7 +29,10 @@ docs/
 
 # Rust
 target/
-Cargo.lock
+# NOTE: Cargo.lock must NOT be ignored. This is a binary crate, so the lock file
+# is committed and the Dockerfile copies it (COPY Cargo.toml Cargo.lock ./) for
+# a reproducible build. Excluding it here made that COPY fail with
+# '"/Cargo.lock": not found'.
 **/*.rs.bk
 *.pdb
 
@@ -49,7 +52,9 @@ dist/
 # Scripts
 scripts/
 examples/
-benches/
+# NOTE: benches/ must NOT be ignored. Cargo.toml declares a [[bench]] target at
+# benches/executor_benchmark.rs, and cargo refuses to parse the manifest at all
+# when that path is absent. tests/ has no such declaration, so it stays out.
 tests/
 
 # Temporary files

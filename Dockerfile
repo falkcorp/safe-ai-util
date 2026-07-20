@@ -11,14 +11,15 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app user
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
+# Create app user. Uses useradd, not adduser: the rust:1.97-slim base is Debian
+# 13 (trixie), whose slim images no longer ship the adduser wrapper, so the old
+# invocation failed with exit 127 (command not found). useradd is in the image.
+RUN useradd \
     --no-create-home \
-    --uid "10001" \
+    --home-dir "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --comment "" \
+    --uid 10001 \
     appuser
 
 WORKDIR /app
@@ -26,15 +27,21 @@ WORKDIR /app
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
 
-# Copy source code
+# Copy source code. benches/ is required too: Cargo.toml declares a [[bench]]
+# target at benches/executor_benchmark.rs, and cargo fails to even parse the
+# manifest when that path is missing ("can't find `executor_benchmark` bench").
 COPY src ./src
+COPY benches ./benches
 
 # Build the application
 RUN cargo build --release && \
     strip target/release/copilot-agent-util
 
 # Runtime stage
-FROM debian:bookworm-slim
+# Must match the builder's Debian release. The builder is rust:1.97-slim, which
+# is Debian 13 (trixie, glibc 2.41); on bookworm (Debian 12, glibc 2.36) the
+# binary built above fails at startup with "GLIBC_2.39 not found".
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
