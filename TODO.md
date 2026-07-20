@@ -1,8 +1,17 @@
 <!-- file: TODO.md -->
-<!-- version: 1.1.0 -->
+<!-- version: 1.2.0 -->
 <!-- guid: c5a2bbd9-63e2-4593-8dd9-a8a3d52f18b3 -->
 
 # TODO: Copilot Agent Utility - Rust Implementation
+
+## 📥 Inbox
+
+Tasks assembled from `todo.d/` fragments. Add a new task by dropping a fragment
+file in `todo.d/` rather than editing this section by hand — see
+[`todo.d/README.md`](todo.d/README.md). Checking a task off, or promoting it
+into one of the curated sections below, is a normal direct edit.
+
+<!-- todo-insert-here -->
 
 ## 🚀 ACTIVE MIGRATION: Rename & MCP Server Creation (2025-10-30)
 
