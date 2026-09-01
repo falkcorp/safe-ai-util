@@ -3,7 +3,7 @@
 # guid: 2b3c4d5e-6f7a-8901-bcde-f23456789012
 
 # Multi-stage build for optimized Rust binary
-FROM rust:1.97-slim as builder
+FROM rust:1.98-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
