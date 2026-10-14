@@ -4,7 +4,7 @@
 # last-edited: 2026-10-04
 
 # Multi-stage build for optimized Rust binary
-FROM rust:1.98-slim as builder
+FROM rust:1.99-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
